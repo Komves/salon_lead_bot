@@ -12,8 +12,10 @@ from app.db import (
 from app.keyboards import (
     admin_application_keyboard,
     confirm_keyboard,
+    dates_keyboard,
     services_keyboard,
     specialists_keyboard,
+    times_keyboard,
 )
 from app.states import LeadFlow
 
@@ -48,23 +50,27 @@ async def choose_service(callback: CallbackQuery, state: FSMContext) -> None:
 async def choose_specialist(callback: CallbackQuery, state: FSMContext) -> None:
     specialist = callback.data.split(":", 1)[1]
     await state.update_data(specialist=specialist)
-    await state.set_state(LeadFlow.entering_date)
-    await callback.message.answer("Введите желаемую дату. Например: 25.05 или завтра")
+    await state.set_state(LeadFlow.choosing_date)
+    await callback.message.answer("Выберите желаемую дату:", reply_markup=dates_keyboard(prefix="date"))
     await callback.answer()
 
 
-@router.message(LeadFlow.entering_date)
-async def enter_date(message: Message, state: FSMContext) -> None:
-    await state.update_data(desired_date=message.text.strip())
-    await state.set_state(LeadFlow.entering_time)
-    await message.answer("Введите желаемое время. Например: 15:00")
+@router.callback_query(LeadFlow.choosing_date, F.data.startswith("date:"))
+async def choose_date(callback: CallbackQuery, state: FSMContext) -> None:
+    desired_date = callback.data.split(":", 1)[1]
+    await state.update_data(desired_date=desired_date)
+    await state.set_state(LeadFlow.choosing_time)
+    await callback.message.answer("Выберите желаемое время:", reply_markup=times_keyboard(prefix="time"))
+    await callback.answer()
 
 
-@router.message(LeadFlow.entering_time)
-async def enter_time(message: Message, state: FSMContext) -> None:
-    await state.update_data(desired_time=message.text.strip())
+@router.callback_query(LeadFlow.choosing_time, F.data.startswith("time:"))
+async def choose_time(callback: CallbackQuery, state: FSMContext) -> None:
+    desired_time = callback.data.split(":", 1)[1]
+    await state.update_data(desired_time=desired_time)
     await state.set_state(LeadFlow.entering_name)
-    await message.answer("Введите ваше имя:")
+    await callback.message.answer("Введите ваше имя:")
+    await callback.answer()
 
 
 @router.message(LeadFlow.entering_name)

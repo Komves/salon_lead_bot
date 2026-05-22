@@ -10,7 +10,7 @@ from app.db import (
     update_application_datetime,
     update_application_status,
 )
-from app.keyboards import admin_application_keyboard
+from app.keyboards import admin_application_keyboard, dates_keyboard, times_keyboard
 from app.states import AdminEditTimeFlow, AdminReplyFlow
 
 router = Router()
@@ -86,35 +86,51 @@ async def admin_edit_time(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Заявка не найдена", show_alert=True)
         return
 
-    await state.set_state(AdminEditTimeFlow.entering_datetime)
+    await state.set_state(AdminEditTimeFlow.choosing_date)
     await state.update_data(edit_application_id=application_id)
     await callback.message.answer(
-        "Введите новую дату и время одной строкой.\n"
-        "Например: 25.05 17:30"
+        f"Выберите новую дату для заявки #{application_id}:",
+        reply_markup=dates_keyboard(prefix="admin_date"),
     )
     await callback.answer()
 
 
-@router.message(AdminEditTimeFlow.entering_datetime)
-async def save_edited_time(message: Message, state: FSMContext) -> None:
-    if not is_admin(message):
+@router.callback_query(AdminEditTimeFlow.choosing_date, F.data.startswith("admin_date:"))
+async def admin_choose_new_date(callback: CallbackQuery, state: FSMContext) -> None:
+    if not is_admin(callback):
+        await callback.answer("Нет доступа", show_alert=True)
         return
 
-    raw = message.text.strip()
-    parts = raw.rsplit(maxsplit=1)
-    if len(parts) != 2:
-        await message.answer("Не понял формат. Введите так: 25.05 17:30")
+    desired_date = callback.data.split(":", 1)[1]
+    await state.update_data(new_desired_date=desired_date)
+    await state.set_state(AdminEditTimeFlow.choosing_time)
+    await callback.message.answer(
+        "Выберите новое время:",
+        reply_markup=times_keyboard(prefix="admin_time"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminEditTimeFlow.choosing_time, F.data.startswith("admin_time:"))
+async def admin_choose_new_time(callback: CallbackQuery, state: FSMContext) -> None:
+    if not is_admin(callback):
+        await callback.answer("Нет доступа", show_alert=True)
         return
 
-    desired_date, desired_time = parts
+    desired_time = callback.data.split(":", 1)[1]
     data = await state.get_data()
     application_id = int(data["edit_application_id"])
+    desired_date = data["new_desired_date"]
 
     await update_application_datetime(application_id, desired_date, desired_time)
-    await add_application_message(application_id, "admin", f"Администратор изменил время на {desired_date} {desired_time}")
+    await add_application_message(
+        application_id,
+        "admin",
+        f"Администратор изменил время на {desired_date} {desired_time}",
+    )
 
     app = await get_application(application_id)
-    await message.bot.send_message(
+    await callback.bot.send_message(
         app["tg_user_id"],
         (
             "Администратор предложил другое время:\n\n"
@@ -123,12 +139,12 @@ async def save_edited_time(message: Message, state: FSMContext) -> None:
             "Если время подходит, напишите ответным сообщением."
         ),
     )
-    await message.answer(
-        "Дата/время обновлены и отправлены клиенту.\n\n"
-        + render_application(app),
+    await callback.message.answer(
+        "Дата/время обновлены и отправлены клиенту.\n\n" + render_application(app),
         reply_markup=admin_application_keyboard(application_id),
     )
     await state.clear()
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("admin_confirm:"))
