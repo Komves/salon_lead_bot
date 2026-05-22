@@ -26,6 +26,7 @@ def confirm_keyboard() -> InlineKeyboardMarkup:
 def admin_application_keyboard(application_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Ответить клиенту", callback_data=f"admin_reply:{application_id}")],
+        [InlineKeyboardButton(text="Изменить дату/время", callback_data=f"admin_edit_time:{application_id}")],
         [
             InlineKeyboardButton(text="Подтвердить", callback_data=f"admin_confirm:{application_id}"),
             InlineKeyboardButton(text="Отклонить", callback_data=f"admin_decline:{application_id}"),

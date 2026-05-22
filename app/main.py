@@ -2,11 +2,11 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
-from aiogram.types import Message
 
 from app.config import BOT_TOKEN
 from app.db import init_db
+from app.handlers_admin import router as admin_router
+from app.handlers_client import router as client_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,18 +14,11 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-@dp.message(CommandStart())
-async def start(message: Message):
-    await message.answer("Бот работает. Заявки будем подключать следующим шагом.")
-
-
-@dp.message()
-async def any_message(message: Message):
-    await message.answer("Сообщение получил.")
-
-
 async def main():
     await init_db()
+
+    dp.include_router(admin_router)
+    dp.include_router(client_router)
 
     try:
         me = await bot.get_me()
@@ -42,6 +35,7 @@ async def main():
         print("DELETE WEBHOOK ERROR:", repr(e))
 
     print("BOT STARTED")
+
     try:
         await dp.start_polling(bot)
     finally:

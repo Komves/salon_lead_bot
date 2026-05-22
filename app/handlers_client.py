@@ -4,7 +4,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.config import ADMIN_CHAT_ID
-from app.db import create_application, add_application_message
+from app.db import (
+    add_application_message,
+    create_application,
+    get_latest_open_application_by_user,
+)
 from app.keyboards import (
     admin_application_keyboard,
     confirm_keyboard,
@@ -135,4 +139,19 @@ async def confirm_lead(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message()
 async def fallback(message: Message, state: FSMContext) -> None:
+    active_app = await get_latest_open_application_by_user(message.from_user.id)
+
+    if active_app and ADMIN_CHAT_ID:
+        await add_application_message(active_app["id"], "client", message.text)
+        await message.bot.send_message(
+            ADMIN_CHAT_ID,
+            (
+                f"Сообщение клиента по заявке #{active_app['id']}:\n\n"
+                f"{message.text}"
+            ),
+            reply_markup=admin_application_keyboard(active_app["id"]),
+        )
+        await message.answer("Сообщение передано администратору.")
+        return
+
     await message.answer("Для создания заявки нажмите /start")

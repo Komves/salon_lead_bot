@@ -13,3 +13,7 @@ class LeadFlow(StatesGroup):
 
 class AdminReplyFlow(StatesGroup):
     entering_message = State()
+
+
+class AdminEditTimeFlow(StatesGroup):
+    entering_datetime = State()

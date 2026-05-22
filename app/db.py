@@ -89,3 +89,28 @@ async def list_new_applications(limit: int = 10) -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+async def update_application_datetime(application_id: int, desired_date: str, desired_time: str) -> None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "UPDATE applications SET desired_date = ?, desired_time = ? WHERE id = ?",
+            (desired_date, desired_time, application_id),
+        )
+        await db.commit()
+
+
+async def get_latest_open_application_by_user(tg_user_id: int) -> dict | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT * FROM applications
+            WHERE tg_user_id = ? AND status = 'new'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (tg_user_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
