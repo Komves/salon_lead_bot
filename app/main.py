@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
