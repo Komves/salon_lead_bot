@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Запись</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root { --bg: #f5f7fb; --card: #ffffff; --text: #18202b; --muted: #6b7280; --accent: #2481cc; --border: #e5e7eb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 16px; }
+    .card { background: var(--card); border-radius: 18px; padding: 16px; box-shadow: 0 8px 24px rgba(15,23,42,.08); margin-bottom: 14px; }
+    h1 { font-size: 24px; margin: 0 0 6px; }
+    h2 { font-size: 18px; margin: 0 0 12px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .grid { display: grid; gap: 10px; }
+    .grid.two { grid-template-columns: 1fr 1fr; }
+    button, input { width: 100%; border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; font-size: 16px; background: #fff; color: var(--text); }
+    button { cursor: pointer; font-weight: 650; }
+    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    button.selected { border-color: var(--accent); background: #e8f3ff; }
+    .step { display: none; }
+    .step.active { display: block; }
+    .summary { line-height: 1.6; }
+    .error { color: #b91c1c; margin-top: 10px; }
+    .small { font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Заявка на запись</h1>
+      <p>Выберите услугу, специалиста и удобное время. Администратор подтвердит запись.</p>
+      <div class="small" id="userLine"></div>
+    </div>
+
+    <div class="card step active" id="step-service">
+      <h2>1. Услуга</h2>
+      <div class="grid" id="services"></div>
+    </div>
+
+    <div class="card step" id="step-specialist">
+      <h2>2. Специалист</h2>
+      <div class="grid" id="specialists"></div>
+    </div>
+
+    <div class="card step" id="step-date">
+      <h2>3. Дата</h2>
+      <div class="grid two" id="dates"></div>
+    </div>
+
+    <div class="card step" id="step-time">
+      <h2>4. Время</h2>
+      <div class="grid two" id="times"></div>
+    </div>
+
+    <div class="card step" id="step-contacts">
+      <h2>5. Контакты</h2>
+      <input id="clientName" placeholder="Ваше имя" autocomplete="name" />
+      <div style="height:10px"></div>
+      <input id="phone" placeholder="Телефон" autocomplete="tel" />
+      <div style="height:12px"></div>
+      <button class="primary" onclick="showSummary()">Проверить заявку</button>
+      <div class="error" id="contactsError"></div>
+    </div>
+
+    <div class="card step" id="step-summary">
+      <h2>Проверьте заявку</h2>
+      <div class="summary" id="summary"></div>
+      <div style="height:12px"></div>
+      <button class="primary" onclick="submitApplication()">Отправить заявку</button>
+      <div style="height:10px"></div>
+      <button onclick="go('step-service')">Заполнить заново</button>
+      <div class="error" id="submitError"></div>
+    </div>
+  </div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+
+  const catalog = {
+    "Стрижка": ["Анна Иванова", "Ольга Петрова"],
+    "Окрашивание": ["Анна Иванова"],
+    "Маникюр": ["Мария Соколова"]
+  };
+
+  const state = { service: null, specialist: null, desired_date: null, desired_time: null };
+  const weekdays = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+  const times = ["10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30"];
+
+  const user = tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
+  document.getElementById('userLine').textContent = user ? `Telegram: ${user.first_name || ''} ${user.username ? '@' + user.username : ''}` : 'Откройте форму из Telegram-бота';
+
+  function go(id) {
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  function button(text, onClick) {
+    const b = document.createElement('button');
+    b.textContent = text;
+    b.onclick = onClick;
+    return b;
+  }
+
+  function renderServices() {
+    const box = document.getElementById('services');
+    box.innerHTML = '';
+    Object.keys(catalog).forEach(service => {
+      box.appendChild(button(service, () => {
+        state.service = service;
+        state.specialist = null;
+        renderSpecialists();
+        go('step-specialist');
+      }));
+    });
+  }
+
+  function renderSpecialists() {
+    const box = document.getElementById('specialists');
+    box.innerHTML = '';
+    catalog[state.service].forEach(name => {
+      box.appendChild(button(name, () => {
+        state.specialist = name;
+        renderDates();
+        go('step-date');
+      }));
+    });
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function renderDates() {
+    const box = document.getElementById('dates');
+    box.innerHTML = '';
+    const now = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      const value = `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+      const label = `${weekdays[d.getDay()]} ${pad(d.getDate())}.${pad(d.getMonth()+1)}`;
+      box.appendChild(button(label, () => {
+        state.desired_date = value;
+        renderTimes();
+        go('step-time');
+      }));
+    }
+  }
+
+  function renderTimes() {
+    const box = document.getElementById('times');
+    box.innerHTML = '';
+    times.forEach(t => {
+      box.appendChild(button(t, () => {
+        state.desired_time = t;
+        go('step-contacts');
+      }));
+    });
+  }
+
+  function showSummary() {
+    const name = document.getElementById('clientName').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const error = document.getElementById('contactsError');
+    error.textContent = '';
+    if (!name || !phone) { error.textContent = 'Введите имя и телефон.'; return; }
+    document.getElementById('summary').innerHTML = `
+      Услуга: <b>${state.service}</b><br>
+      Специалист: <b>${state.specialist}</b><br>
+      Дата: <b>${state.desired_date}</b><br>
+      Время: <b>${state.desired_time}</b><br>
+      Имя: <b>${name}</b><br>
+      Телефон: <b>${phone}</b>
+    `;
+    go('step-summary');
+  }
+
+  async function submitApplication() {
+    const error = document.getElementById('submitError');
+    error.textContent = '';
+    if (!user || !user.id) { error.textContent = 'Не удалось определить Telegram пользователя. Откройте форму из бота.'; return; }
+    const payload = {
+      tg_user_id: user.id,
+      username: user.username || null,
+      service: state.service,
+      specialist: state.specialist,
+      desired_date: state.desired_date,
+      desired_time: state.desired_time,
+      client_name: document.getElementById('clientName').value.trim(),
+      phone: document.getElementById('phone').value.trim()
+    };
+    const res = await fetch('/api/applications', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (!res.ok) { error.textContent = 'Ошибка отправки заявки.'; return; }
+    tg.showAlert('Заявка отправлена. Администратор подтвердит запись.');
+    setTimeout(() => tg.close(), 500);
+  }
+
+  renderServices();
+</script>
+</body>
+</html>

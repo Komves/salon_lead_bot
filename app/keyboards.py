@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+from app.config import PUBLIC_BASE_URL
 
 from app.catalog import SERVICES, get_specialists
 
@@ -15,6 +17,19 @@ TIME_SLOTS = [
 
 
 RU_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+
+def start_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    if PUBLIC_BASE_URL:
+        rows.append([
+            InlineKeyboardButton(
+                text="Открыть форму записи",
+                web_app=WebAppInfo(url=PUBLIC_BASE_URL),
+            )
+        ])
+    rows.append([InlineKeyboardButton(text="Заполнить в чате", callback_data="lead_restart")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def services_keyboard() -> InlineKeyboardMarkup:

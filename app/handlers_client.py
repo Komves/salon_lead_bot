@@ -15,6 +15,7 @@ from app.keyboards import (
     dates_keyboard,
     services_keyboard,
     specialists_keyboard,
+    start_keyboard,
     times_keyboard,
 )
 from app.states import LeadFlow
@@ -25,8 +26,10 @@ router = Router()
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await state.set_state(LeadFlow.choosing_service)
-    await message.answer("Здравствуйте. Выберите услугу:", reply_markup=services_keyboard())
+    await message.answer(
+        "Здравствуйте. Для записи откройте форму или заполните заявку прямо в чате.",
+        reply_markup=start_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "lead_restart")

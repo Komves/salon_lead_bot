@@ -10,6 +10,7 @@ load_dotenv(ENV_PATH)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db").strip()
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
 
 if not BOT_TOKEN:
     raise RuntimeError(f"BOT_TOKEN is empty. Create .env in project root: {ENV_PATH}")
