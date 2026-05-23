@@ -3,6 +3,17 @@ import aiosqlite
 from app.config import DATABASE_PATH
 
 
+async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> bool:
+    cursor = await db.execute(f"PRAGMA table_info({table})")
+    rows = await cursor.fetchall()
+    return any(row[1] == column for row in rows)
+
+
+async def _add_column_if_missing(db: aiosqlite.Connection, table: str, column: str, definition: str) -> None:
+    if not await _column_exists(db, table, column):
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 async def init_db() -> None:
     db_dir = os.path.dirname(DATABASE_PATH)
     if db_dir:
@@ -21,6 +32,10 @@ async def init_db() -> None:
             client_name TEXT NOT NULL,
             phone TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'new',
+            reminder_sent_at TEXT,
+            client_reminder_response TEXT,
+            client_reminder_response_at TEXT,
+            cancelled_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
@@ -33,6 +48,12 @@ async def init_db() -> None:
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
+        # Migrations for old deployed SQLite DBs.
+        await _add_column_if_missing(db, "applications", "reminder_sent_at", "TEXT")
+        await _add_column_if_missing(db, "applications", "client_reminder_response", "TEXT")
+        await _add_column_if_missing(db, "applications", "client_reminder_response_at", "TEXT")
+        await _add_column_if_missing(db, "applications", "cancelled_at", "TEXT")
         await db.commit()
 
 
@@ -71,6 +92,43 @@ async def update_application_status(application_id: int, status: str) -> None:
         await db.commit()
 
 
+async def update_application_datetime(application_id: int, desired_date: str, desired_time: str) -> None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            """
+            UPDATE applications
+            SET desired_date = ?, desired_time = ?, reminder_sent_at = NULL,
+                client_reminder_response = NULL, client_reminder_response_at = NULL, cancelled_at = NULL
+            WHERE id = ?
+            """,
+            (desired_date, desired_time, application_id),
+        )
+        await db.commit()
+
+
+async def mark_reminder_sent(application_id: int, sent_at: str) -> None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "UPDATE applications SET reminder_sent_at = ? WHERE id = ?",
+            (sent_at, application_id),
+        )
+        await db.commit()
+
+
+async def update_client_reminder_response(application_id: int, response: str, status: str, response_at: str) -> None:
+    cancelled_at = response_at if response == "will_not_come" else None
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            """
+            UPDATE applications
+            SET client_reminder_response = ?, client_reminder_response_at = ?, status = ?, cancelled_at = ?
+            WHERE id = ?
+            """,
+            (response, response_at, status, cancelled_at, application_id),
+        )
+        await db.commit()
+
+
 async def add_application_message(application_id: int, sender: str, text: str) -> None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
@@ -91,13 +149,19 @@ async def list_new_applications(limit: int = 10) -> list[dict]:
         return [dict(row) for row in rows]
 
 
-async def update_application_datetime(application_id: int, desired_date: str, desired_time: str) -> None:
+async def list_confirmed_without_reminder() -> list[dict]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            "UPDATE applications SET desired_date = ?, desired_time = ? WHERE id = ?",
-            (desired_date, desired_time, application_id),
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT * FROM applications
+            WHERE status = 'confirmed'
+              AND reminder_sent_at IS NULL
+            ORDER BY id ASC
+            """
         )
-        await db.commit()
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 
 async def get_latest_open_application_by_user(tg_user_id: int) -> dict | None:
@@ -106,7 +170,8 @@ async def get_latest_open_application_by_user(tg_user_id: int) -> dict | None:
         cursor = await db.execute(
             """
             SELECT * FROM applications
-            WHERE tg_user_id = ? AND status = 'new'
+            WHERE tg_user_id = ?
+              AND status IN ('new', 'confirmed', 'client_confirmed')
             ORDER BY id DESC
             LIMIT 1
             """,

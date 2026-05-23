@@ -3,7 +3,6 @@ from datetime import date, timedelta
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.config import PUBLIC_BASE_URL
-
 from app.catalog import SERVICES, get_specialists
 
 
@@ -14,7 +13,6 @@ TIME_SLOTS = [
     "16:00", "16:30", "17:00", "17:30",
     "18:00", "18:30", "19:00", "19:30",
 ]
-
 
 RU_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
@@ -98,4 +96,13 @@ def admin_application_keyboard(application_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="Подтвердить", callback_data=f"admin_confirm:{application_id}"),
             InlineKeyboardButton(text="Отклонить", callback_data=f"admin_decline:{application_id}"),
         ],
+    ])
+
+
+def reminder_response_keyboard(application_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Приду", callback_data=f"client_will_come:{application_id}"),
+            InlineKeyboardButton(text="❌ Не приду", callback_data=f"client_will_not_come:{application_id}"),
+        ]
     ])

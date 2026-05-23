@@ -14,6 +14,7 @@ from app.db import init_db
 from app.handlers_admin import router as admin_router
 from app.handlers_client import router as client_router
 from app.api import router as api_router
+from app.reminders import reminder_loop
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,19 +34,22 @@ async def lifespan(app: FastAPI):
     webhook_url = f"{PUBLIC_BASE_URL.rstrip('/')}{WEBHOOK_PATH}"
 
     await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(
-        url=webhook_url,
-        drop_pending_updates=True,
-    )
+    await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
 
     me = await bot.get_me()
     print(f"BOT CONNECTED: @{me.username}")
     print(f"WEBHOOK SET: {webhook_url}")
 
+    reminder_task = asyncio.create_task(reminder_loop(bot))
+
     try:
         yield
     finally:
-        await bot.delete_webhook(drop_pending_updates=False)
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
         await bot.session.close()
 
 

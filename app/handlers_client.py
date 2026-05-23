@@ -1,13 +1,18 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.config import ADMIN_CHAT_ID
+from app.config import ADMIN_CHAT_ID, APP_TIMEZONE
 from app.db import (
     add_application_message,
     create_application,
+    get_application,
     get_latest_open_application_by_user,
+    update_client_reminder_response,
 )
 from app.keyboards import (
     admin_application_keyboard,
@@ -21,6 +26,10 @@ from app.keyboards import (
 from app.states import LeadFlow
 
 router = Router()
+
+
+def now_iso() -> str:
+    return datetime.now(ZoneInfo(APP_TIMEZONE)).isoformat(timespec="seconds")
 
 
 @router.message(CommandStart())
@@ -118,7 +127,6 @@ async def confirm_lead(callback: CallbackQuery, state: FSMContext) -> None:
     })
 
     await add_application_message(application_id, "client", "Заявка создана")
-
     await callback.message.answer(
         "✅ Заявка принята. Администратор проверит расписание и подтвердит запись."
     )
@@ -143,6 +151,64 @@ async def confirm_lead(callback: CallbackQuery, state: FSMContext) -> None:
         )
 
     await state.clear()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("client_will_come:"))
+async def client_will_come(callback: CallbackQuery) -> None:
+    application_id = int(callback.data.split(":", 1)[1])
+    app = await get_application(application_id)
+    if not app or app["tg_user_id"] != callback.from_user.id:
+        await callback.answer("Заявка не найдена", show_alert=True)
+        return
+
+    await update_client_reminder_response(application_id, "will_come", "client_confirmed", now_iso())
+    await add_application_message(application_id, "client", "Клиент подтвердил, что придет")
+    await callback.message.answer("✅ Спасибо, ждём вас в назначенное время.")
+
+    if ADMIN_CHAT_ID:
+        await callback.bot.send_message(
+            ADMIN_CHAT_ID,
+            (
+                f"✅ Клиент подтвердил визит по заявке #{application_id}\n\n"
+                f"Услуга: {app['service']}\n"
+                f"Специалист: {app['specialist']}\n"
+                f"Дата: {app['desired_date']}\n"
+                f"Время: {app['desired_time']}\n\n"
+                f"Клиент: {app['client_name']}\n"
+                f"Телефон: {app['phone']}"
+            ),
+            reply_markup=admin_application_keyboard(application_id),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("client_will_not_come:"))
+async def client_will_not_come(callback: CallbackQuery) -> None:
+    application_id = int(callback.data.split(":", 1)[1])
+    app = await get_application(application_id)
+    if not app or app["tg_user_id"] != callback.from_user.id:
+        await callback.answer("Заявка не найдена", show_alert=True)
+        return
+
+    await update_client_reminder_response(application_id, "will_not_come", "cancelled_by_client", now_iso())
+    await add_application_message(application_id, "client", "Клиент отменил визит через напоминание")
+    await callback.message.answer("❌ Запись отменена. Администратор получил уведомление.")
+
+    if ADMIN_CHAT_ID:
+        await callback.bot.send_message(
+            ADMIN_CHAT_ID,
+            (
+                f"❌ Клиент отменил запись #{application_id}\n\n"
+                f"Услуга: {app['service']}\n"
+                f"Специалист: {app['specialist']}\n"
+                f"Дата: {app['desired_date']}\n"
+                f"Время: {app['desired_time']}\n\n"
+                f"Клиент: {app['client_name']}\n"
+                f"Телефон: {app['phone']}"
+            ),
+            reply_markup=admin_application_keyboard(application_id),
+        )
     await callback.answer()
 
 
