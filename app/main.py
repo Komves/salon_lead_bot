@@ -24,6 +24,23 @@ dp = Dispatcher()
 WEBHOOK_PATH = "/telegram/webhook"
 
 
+async def webhook_guard_loop() -> None:
+    while True:
+        try:
+            expected_url = f"{PUBLIC_BASE_URL.rstrip('/')}{WEBHOOK_PATH}"
+            info = await bot.get_webhook_info()
+
+            if info.url != expected_url:
+                print(f"WEBHOOK MISMATCH: current={info.url!r}, expected={expected_url!r}")
+                await bot.delete_webhook(drop_pending_updates=False)
+                await bot.set_webhook(url=expected_url, drop_pending_updates=False)
+                print(f"WEBHOOK RESTORED: {expected_url}")
+
+        except Exception as e:
+            print(f"WEBHOOK GUARD ERROR: {e!r}")
+
+        await asyncio.sleep(300)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -41,15 +58,24 @@ async def lifespan(app: FastAPI):
     print(f"WEBHOOK SET: {webhook_url}")
 
     reminder_task = asyncio.create_task(reminder_loop(bot))
+    webhook_guard_task = asyncio.create_task(webhook_guard_loop())
 
     try:
         yield
     finally:
         reminder_task.cancel()
+        webhook_guard_task.cancel()
+
         try:
             await reminder_task
         except asyncio.CancelledError:
             pass
+
+        try:
+            await webhook_guard_task
+        except asyncio.CancelledError:
+            pass
+
         await bot.session.close()
 
 
