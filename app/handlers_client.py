@@ -14,6 +14,9 @@ from app.db import (
     get_latest_open_application_by_user,
     update_client_reminder_response,
 )
+
+from app.reminders import parse_appointment_at
+
 from app.keyboards import (
     admin_application_keyboard,
     confirm_keyboard,
@@ -114,6 +117,28 @@ async def enter_phone(message: Message, state: FSMContext) -> None:
 async def confirm_lead(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     user = callback.from_user
+
+    appointment_at = parse_appointment_at({
+        "desired_date": data["desired_date"],
+        "desired_time": data["desired_time"],
+    })
+
+    now = datetime.now(ZoneInfo(APP_TIMEZONE))
+
+    if not appointment_at:
+        await callback.message.answer(
+            "❌ Не удалось распознать дату или время записи."
+        )
+        await callback.answer()
+        return
+
+    if appointment_at <= now:
+        await callback.message.answer(
+            "❌ Нельзя записаться на прошедшее время.\n\n"
+            "Выберите другую дату или время."
+        )
+        await callback.answer()
+        return
 
     application_id = await create_application({
         "tg_user_id": user.id,

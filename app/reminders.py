@@ -66,21 +66,29 @@ async def send_due_reminders(bot: Bot) -> None:
         # не шлем если осталось меньше 5 минут
         if minutes_left < 5:
             continue
-            text = (
-                "⏰ Напоминание о записи\n\n"
-                f"Услуга: {app['service']}\n"
-                f"Специалист: {app['specialist']}\n"
-                f"Дата: {app['desired_date']}\n"
-                f"Время: {app['desired_time']}\n\n"
-                "Подтвердите, пожалуйста, вы придёте?"
-            )
-            await bot.send_message(
-                app["tg_user_id"],
-                text,
-                reply_markup=reminder_response_keyboard(app["id"]),
-            )
-            await mark_reminder_sent(app["id"], now.isoformat(timespec="seconds"))
-            await add_application_message(app["id"], "system", "Отправлено напоминание за час")
+
+        text = (
+            "⏰ Напоминание о записи\n\n"
+            f"Услуга: {app['service']}\n"
+            f"Специалист: {app['specialist']}\n"
+            f"Дата: {app['desired_date']}\n"
+            f"Время: {app['desired_time']}\n\n"
+            "Подтвердите, пожалуйста, вы придёте?"
+        )
+
+        await bot.send_message(
+            app["tg_user_id"],
+            text,
+            reply_markup=reminder_response_keyboard(app["id"]),
+        )
+
+        await mark_reminder_sent(app["id"], now.isoformat(timespec="seconds"))
+
+        await add_application_message(
+            app["id"],
+            "system",
+            "Отправлено напоминание за час",
+        )
 
 
 async def reminder_loop(bot: Bot) -> None:
