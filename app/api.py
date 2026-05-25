@@ -4,7 +4,14 @@ from fastapi import APIRouter, HTTPException
 from app.config import ADMIN_CHAT_ID
 from app.catalog import CATALOG
 from app.db import add_application_message, create_application
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.config import ADMIN_CHAT_ID, APP_TIMEZONE
+from app.catalog import CATALOG
+from app.db import add_application_message, create_application
 from app.keyboards import admin_application_keyboard
+from app.reminders import parse_appointment_at
 
 router = APIRouter()
 
@@ -32,6 +39,25 @@ async def create_application_from_miniapp(payload: MiniAppApplication) -> dict:
 
     if payload.specialist not in CATALOG[payload.service]:
         raise HTTPException(status_code=400, detail="Unknown specialist for service")
+
+    appointment_at = parse_appointment_at({
+        "desired_date": payload.desired_date,
+        "desired_time": payload.desired_time,
+    })
+
+    now = datetime.now(ZoneInfo(APP_TIMEZONE))
+
+    if not appointment_at:
+        raise HTTPException(
+            status_code=400,
+            detail="Не удалось распознать дату или время записи",
+        )
+
+    if appointment_at <= now:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя записаться на прошедшее время",
+        )
 
     application_id = await create_application(payload.model_dump())
     await add_application_message(application_id, "client", "Заявка создана через Mini App")
