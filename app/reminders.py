@@ -53,7 +53,19 @@ async def send_due_reminders(bot: Bot) -> None:
             continue
 
         minutes_left = (appointment_at - now).total_seconds() / 60
-        if 0 <= minutes_left <= REMINDER_MINUTES_BEFORE:
+
+        # запись уже прошла
+        if minutes_left < 0:
+            continue
+
+        # еще слишком рано
+        if minutes_left > REMINDER_MINUTES_BEFORE:
+            continue
+
+        # защита от позднего пробуждения Render
+        # не шлем если осталось меньше 5 минут
+        if minutes_left < 5:
+            continue
             text = (
                 "⏰ Напоминание о записи\n\n"
                 f"Услуга: {app['service']}\n"
