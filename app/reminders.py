@@ -77,12 +77,12 @@ async def send_due_reminders(bot: Bot) -> None:
         )
 
         text = (
-            "⏰ Напоминание о записи\n\n"
-            f"Услуга: {app['service']}\n"
-            f"Специалист: {app['specialist']}\n"
-            f"Дата: {app['desired_date']}\n"
-            f"Время: {app['desired_time']}\n\n"
-            "Подтвердите, пожалуйста, вы придёте?"
+            "✨ Напоминаем о вашей записи\n\n"
+            f"📅 {app['desired_date']} в {app['desired_time']}\n"
+            f"💇 Услуга: {app['service']}\n"
+            f"👤 Специалист: {app['specialist']}\n\n"
+            "Мы будем вас ждать.\n"
+            "Пожалуйста, подтвердите, сможете ли прийти."
         )
 
         await bot.send_message(
