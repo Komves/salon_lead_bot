@@ -47,24 +47,55 @@ async def send_due_reminders(bot: Bot) -> None:
     now = datetime.now(tz)
     apps = await list_confirmed_without_reminder()
 
+    print(
+        "[REMINDER_LOOP]",
+        "now=", now.isoformat(),
+        "timezone=", APP_TIMEZONE,
+        "minutes_before=", REMINDER_MINUTES_BEFORE,
+        "apps_count=", len(apps),
+        flush=True,
+    )
+
     for app in apps:
+        print(
+            "[REMINDER_APP]",
+            "app_id=", app.get("id"),
+            "status=", app.get("status"),
+            "date=", app.get("desired_date"),
+            "time=", app.get("desired_time"),
+            "reminder_sent_at=", app.get("reminder_sent_at"),
+            flush=True,
+        )
+
         appointment_at = parse_appointment_at(app)
         if not appointment_at:
+            print("[REMINDER_SKIP] reason=parse_failed app_id=", app.get("id"), flush=True)
             continue
 
         minutes_left = (appointment_at - now).total_seconds() / 60
 
+        print(
+            "[REMINDER_TIME]",
+            "app_id=", app.get("id"),
+            "appointment_at=", appointment_at.isoformat(),
+            "minutes_left=", minutes_left,
+            flush=True,
+        )
+
         # запись уже прошла
         if minutes_left < 0:
+            print("[REMINDER_SKIP] reason=already_past app_id=", app.get("id"), flush=True)
             continue
 
         # еще слишком рано
         if minutes_left > REMINDER_MINUTES_BEFORE:
+            print("[REMINDER_SKIP] reason=too_early app_id=", app.get("id"), flush=True)
             continue
 
         # защита от позднего пробуждения Render
         # не шлем если осталось меньше 5 минут
         if minutes_left < 5:
+            print("[REMINDER_SKIP] reason=too_late app_id=", app.get("id"), flush=True)
             continue
 
         print(
