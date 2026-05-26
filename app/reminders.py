@@ -51,7 +51,7 @@ def parse_appointment_at(app: dict) -> datetime | None:
 
 async def send_due_reminders(bot: Bot) -> None:
     tz = ZoneInfo(APP_TIMEZONE)
-    now = datetime.utcnow().replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+    now = datetime.now(tz)
     apps = await list_confirmed_without_reminder()
 
     print(
