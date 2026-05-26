@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -44,7 +44,7 @@ def parse_appointment_at(app: dict) -> datetime | None:
 
 async def send_due_reminders(bot: Bot) -> None:
     tz = ZoneInfo(APP_TIMEZONE)
-    now = datetime.now(tz)
+    now = datetime.now(UTC).astimezone(tz)
     apps = await list_confirmed_without_reminder()
 
     print(
