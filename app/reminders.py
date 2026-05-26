@@ -35,7 +35,14 @@ def parse_appointment_at(app: dict) -> datetime | None:
             dt = datetime.strptime(raw, fmt)
             if "%Y" not in fmt:
                 dt = dt.replace(year=current_year)
-            return dt.replace(tzinfo=tz)
+            return datetime(
+                dt.year,
+                dt.month,
+                dt.day,
+                dt.hour,
+                dt.minute,
+                tzinfo=tz,
+            )
         except ValueError:
             continue
     logger.warning("Cannot parse appointment datetime for application %s: %s", app.get("id"), raw)
