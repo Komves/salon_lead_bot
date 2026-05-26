@@ -67,6 +67,15 @@ async def send_due_reminders(bot: Bot) -> None:
         if minutes_left < 5:
             continue
 
+        print(
+            "[REMINDER_SEND]",
+            "app_id=", app["id"],
+            "now=", now.isoformat(),
+            "appointment_at=", appointment_at.isoformat(),
+            "minutes_left=", minutes_left,
+            flush=True,
+        )
+
         text = (
             "⏰ Напоминание о записи\n\n"
             f"Услуга: {app['service']}\n"
