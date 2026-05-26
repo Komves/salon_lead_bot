@@ -13,6 +13,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db").strip()
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
 APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Europe/Moscow").strip()
 REMINDER_MINUTES_BEFORE = int(os.getenv("REMINDER_MINUTES_BEFORE", "60"))
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 if not BOT_TOKEN:
     raise RuntimeError(f"BOT_TOKEN is empty. Create .env in project root: {ENV_PATH}")

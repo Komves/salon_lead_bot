@@ -1,6 +1,8 @@
-import os
-import aiosqlite
-from app.config import DATABASE_PATH
+import asyncpg
+
+from app.config import DATABASE_URL
+
+pool: asyncpg.Pool | None = None
 
 
 async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> bool:
@@ -15,15 +17,15 @@ async def _add_column_if_missing(db: aiosqlite.Connection, table: str, column: s
 
 
 async def init_db() -> None:
-    db_dir = os.path.dirname(DATABASE_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
+    global pool
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("""
+    pool = await asyncpg.create_pool(DATABASE_URL)
+
+    async with pool.acquire() as conn:
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            tg_user_id BIGINT NOT NULL,
             username TEXT,
             service TEXT NOT NULL,
             specialist TEXT NOT NULL,
@@ -36,35 +38,30 @@ async def init_db() -> None:
             client_reminder_response TEXT,
             client_reminder_response_at TEXT,
             cancelled_at TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT NOW()
         )
         """)
-        await db.execute("""
+
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS application_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             application_id INTEGER NOT NULL,
             sender TEXT NOT NULL,
             text TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT NOW()
         )
         """)
 
-        # Migrations for old deployed SQLite DBs.
-        await _add_column_if_missing(db, "applications", "reminder_sent_at", "TEXT")
-        await _add_column_if_missing(db, "applications", "client_reminder_response", "TEXT")
-        await _add_column_if_missing(db, "applications", "client_reminder_response_at", "TEXT")
-        await _add_column_if_missing(db, "applications", "cancelled_at", "TEXT")
-        await db.commit()
-
-
 async def create_application(data: dict) -> int:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute("""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
         INSERT INTO applications (
             tg_user_id, username, service, specialist,
             desired_date, desired_time, client_name, phone
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        RETURNING id
+        """,
             data["tg_user_id"],
             data.get("username"),
             data["service"],
@@ -73,10 +70,9 @@ async def create_application(data: dict) -> int:
             data["desired_time"],
             data["client_name"],
             data["phone"],
-        ))
-        await db.commit()
-        return int(cursor.lastrowid)
+        )
 
+        return int(row["id"])
 
 async def get_application(application_id: int) -> dict | None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
