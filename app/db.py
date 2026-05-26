@@ -5,15 +5,10 @@ from app.config import DATABASE_URL
 pool: asyncpg.Pool | None = None
 
 
-async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> bool:
-    cursor = await db.execute(f"PRAGMA table_info({table})")
-    rows = await cursor.fetchall()
-    return any(row[1] == column for row in rows)
-
-
-async def _add_column_if_missing(db: aiosqlite.Connection, table: str, column: str, definition: str) -> None:
-    if not await _column_exists(db, table, column):
-        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+def _require_pool() -> asyncpg.Pool:
+    if pool is None:
+        raise RuntimeError("Database pool is not initialized")
+    return pool
 
 
 async def init_db() -> None:
@@ -52,8 +47,9 @@ async def init_db() -> None:
         )
         """)
 
+
 async def create_application(data: dict) -> int:
-    async with pool.acquire() as conn:
+    async with _require_pool().acquire() as conn:
         row = await conn.fetchrow("""
         INSERT INTO applications (
             tg_user_id, username, service, specialist,
@@ -71,107 +67,106 @@ async def create_application(data: dict) -> int:
             data["client_name"],
             data["phone"],
         )
-
         return int(row["id"])
 
+
 async def get_application(application_id: int) -> dict | None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM applications WHERE id = ?", (application_id,))
-        row = await cursor.fetchone()
+    async with _require_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM applications WHERE id = $1",
+            application_id,
+        )
         return dict(row) if row else None
 
 
 async def update_application_status(application_id: int, status: str) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("UPDATE applications SET status = ? WHERE id = ?", (status, application_id))
-        await db.commit()
+    async with _require_pool().acquire() as conn:
+        await conn.execute(
+            "UPDATE applications SET status = $1 WHERE id = $2",
+            status,
+            application_id,
+        )
 
 
 async def update_application_datetime(application_id: int, desired_date: str, desired_time: str) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            """
-            UPDATE applications
-            SET desired_date = ?, desired_time = ?, reminder_sent_at = NULL,
-                client_reminder_response = NULL, client_reminder_response_at = NULL, cancelled_at = NULL
-            WHERE id = ?
-            """,
-            (desired_date, desired_time, application_id),
-        )
-        await db.commit()
+    async with _require_pool().acquire() as conn:
+        await conn.execute("""
+        UPDATE applications
+        SET desired_date = $1,
+            desired_time = $2,
+            reminder_sent_at = NULL,
+            client_reminder_response = NULL,
+            client_reminder_response_at = NULL,
+            cancelled_at = NULL
+        WHERE id = $3
+        """, desired_date, desired_time, application_id)
 
 
 async def mark_reminder_sent(application_id: int, sent_at: str) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            "UPDATE applications SET reminder_sent_at = ? WHERE id = ?",
-            (sent_at, application_id),
+    async with _require_pool().acquire() as conn:
+        await conn.execute(
+            "UPDATE applications SET reminder_sent_at = $1 WHERE id = $2",
+            sent_at,
+            application_id,
         )
-        await db.commit()
 
 
-async def update_client_reminder_response(application_id: int, response: str, status: str, response_at: str) -> None:
+async def update_client_reminder_response(
+    application_id: int,
+    response: str,
+    status: str,
+    response_at: str,
+) -> None:
     cancelled_at = response_at if response == "will_not_come" else None
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            """
-            UPDATE applications
-            SET client_reminder_response = ?, client_reminder_response_at = ?, status = ?, cancelled_at = ?
-            WHERE id = ?
-            """,
-            (response, response_at, status, cancelled_at, application_id),
-        )
-        await db.commit()
+
+    async with _require_pool().acquire() as conn:
+        await conn.execute("""
+        UPDATE applications
+        SET client_reminder_response = $1,
+            client_reminder_response_at = $2,
+            status = $3,
+            cancelled_at = $4
+        WHERE id = $5
+        """, response, response_at, status, cancelled_at, application_id)
 
 
 async def add_application_message(application_id: int, sender: str, text: str) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            "INSERT INTO application_messages (application_id, sender, text) VALUES (?, ?, ?)",
-            (application_id, sender, text),
-        )
-        await db.commit()
+    async with _require_pool().acquire() as conn:
+        await conn.execute("""
+        INSERT INTO application_messages (application_id, sender, text)
+        VALUES ($1,$2,$3)
+        """, application_id, sender, text)
 
 
 async def list_new_applications(limit: int = 10) -> list[dict]:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM applications WHERE status = 'new' ORDER BY id DESC LIMIT ?",
-            (limit,),
-        )
-        rows = await cursor.fetchall()
+    async with _require_pool().acquire() as conn:
+        rows = await conn.fetch("""
+        SELECT * FROM applications
+        WHERE status = 'new'
+        ORDER BY id DESC
+        LIMIT $1
+        """, limit)
         return [dict(row) for row in rows]
 
 
 async def list_confirmed_without_reminder() -> list[dict]:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT * FROM applications
-            WHERE status = 'confirmed'
-              AND reminder_sent_at IS NULL
-            ORDER BY id ASC
-            """
-        )
-        rows = await cursor.fetchall()
+    async with _require_pool().acquire() as conn:
+        rows = await conn.fetch("""
+        SELECT * FROM applications
+        WHERE status = 'confirmed'
+          AND reminder_sent_at IS NULL
+        ORDER BY id ASC
+        """)
         return [dict(row) for row in rows]
 
 
 async def get_latest_open_application_by_user(tg_user_id: int) -> dict | None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            SELECT * FROM applications
-            WHERE tg_user_id = ?
-              AND status IN ('new', 'confirmed', 'client_confirmed')
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (tg_user_id,),
-        )
-        row = await cursor.fetchone()
+    async with _require_pool().acquire() as conn:
+        row = await conn.fetchrow("""
+        SELECT * FROM applications
+        WHERE tg_user_id = $1
+          AND status IN ('new', 'confirmed', 'client_confirmed')
+        ORDER BY id DESC
+        LIMIT 1
+        """, tg_user_id)
         return dict(row) if row else None
